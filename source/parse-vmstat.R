@@ -4,10 +4,12 @@
 #filePatternOverride <- "^dm02cel0[0-1].+(\\.bz2|\\.gz)$"
 filePatternOverride <- "*.dat"
 
-setwd("M:/Dropbox/MyFiles/GitHub/plot-oswatcher/data/vmstat-data")
+#setwd("M:/Dropbox/MyFiles/GitHub/plot-oswatcher/data/vmstat-data")
 
 
 oswParseVMSTATversion <- '0.3.0'
+oswM$DT_VMSTAT <- data.table()
+
 
 list.of.packages <- c("futile.logger","ggplot2", "dplyr","gridExtra","scales","reshape","xtable","ggthemes","stringr","data.table","lubridate","gplots")
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
@@ -109,7 +111,19 @@ compareFile <- function(inFileName,inFileInfo){
 
 updateFileMetadata <- function(inFileName,inFileInfo,inOkToParse){
   if(inOkToParse){
-    oswMdata$dataFiles <<- oswMdata$dataFiles[oswMdata$dataFiles$fileName != inFileName]
+    print(inFileName)
+    print(str(inFileInfo))
+    print(inFileInfo$mtime)
+    print(head(oswMdata$dataFiles))
+    
+    
+    if(("fileName" %in% names(oswMdata$dataFiles))){
+      print(head(oswMdata$dataFiles))
+      print(nrow(oswMdata$dataFiles))
+      #oswMdata$dataFiles <<- oswMdata$dataFiles[oswMdata$dataFiles$fileName != inFileName]
+      print(nrow(oswMdata$dataFiles))
+      print(head(oswMdata$dataFiles))
+    }
     
     oswMdata$dataFiles <<- rbind(oswMdata$dataFiles,data.frame(parseDate=now(),version=oswParseVMSTATversion,fileName=f,
                                                               modifiedDate=fileInfo$mtime,size=fileInfo$size))
@@ -127,8 +141,8 @@ parseVMSTATfile <- function(inFileName,inCellName){
 
   
   
-  #maxLoops <- 200000000000000000
-  maxLoops <- 500
+  maxLoops <- 200000000000000000
+  #maxLoops <- 500
   loopCounter <- 0
   baseDate <- NULL
   baseDateTime <- NULL
@@ -136,7 +150,7 @@ parseVMSTATfile <- function(inFileName,inCellName){
   dataBlock <- NULL
   dataBlockRowCounter <- 0
   currentBlockTime <- NULL
-  oswM$DT_VMSTAT <- data.table()
+
   
   
   
@@ -163,47 +177,7 @@ parseVMSTATfile <- function(inFileName,inCellName){
   
   flog.debug('mainLoop - start')
   while (length(oneLine <- readLines(con, n = 1, warn = FALSE)) > 0) {
-#     if(is.null(baseDateTime)){
-#       if(str_detect(oneLine,"^zzz")){ #Found the base date block
-#         baseDateTmp <- str_replace(oneLine,'^[z\\* ]+','')
-#         baseDateTmp <- str_replace(baseDateTmp,'(.+)(Sample interval.*)$','\\1')
-#         baseDateTmp <- str_trim(baseDateTmp)
-#         
-#         baseTimeZone <- str_replace(baseDateTmp,'^(.+) ([A-Z]{3,3}) ([0-9]{4,4})$','\\2') #Extract the timezone
-#         baseDateTmp <- str_replace(baseDateTmp,paste0(baseTimeZone," "),"") #Replace the timezone with null
-#         
-#         baseDateTime <- as.POSIXct(baseDateTmp,format="%a %b %d %H:%M:%S %Y",TZ=baseTimeZone) #Convert to a true date format
-#         baseDate <- round_date(baseDateTime,"day")
-#         #print(baseDateTmp)
-#         #print(baseDate)
-#       }
-#     }
-    
-#     if(str_detect(oneLine,fixed("Time"))){ #Found a Time block 
-#       #print(oneLine)
-#       
-#       
-#       dataBlock <- NULL
-#       currentBlockTimeTmp <- str_replace(oneLine,'Time: ','')
-#       
-#       dateStringTmp <- paste0(strftime(baseDate,format="%Y/%m/%d")," ",currentBlockTimeTmp)
-#       currentBlockTime <- as.POSIXct(dateStringTmp,format="%Y/%m/%d %H:%M:%S",TZ=baseTimeZone) #Convert to a true date format
-#       
-#       #print(currentBlockTime)
-#       cpuBlock1 <- readLines(con, n = 1, warn = FALSE)
-#       cpuBlock1 <- str_replace(cpuBlock1,'avg-cpu:  ','')
-#       cpuBlock1 <- str_replace_all(cpuBlock1,'%','')
-#       cpuBlock2 <- readLines(con, n = 1, warn = FALSE)  
-#       
-#       cpuBlock2 <- str_trim(cpuBlock2,side = "left")
-#       #print(oneLine)
-#       cpuBlock <- paste0(cpuBlock1,"\n",cpuBlock2,"\n")
-#       
-#       dfInt = read.table(file=textConnection(cpuBlock),header=TRUE)
-#       df_test <<- dfInt
-#       #print(head(dfInt))
-#     }
-    
+
     
     
     
@@ -241,7 +215,7 @@ parseVMSTATfile <- function(inFileName,inCellName){
           #dfInt2 = fread(input=as.character(dataBlock),header=TRUE)
           #print(head(dfInt2))
 
-          if(("sy.1" %in% names(dfInt2))){ # Solaris has 2 columns named "sy"
+          if(("sy.1" %in% names(dfInt2))){ # Solaris and HPUX have 2 columns named "sy"
             dfInt2 <- subset( dfInt2, select = -c(sy) )
             dfInt2 <- rename(dfInt2, c("sy.1"="sy","pi"="si","po"="so"))
           }
@@ -249,6 +223,11 @@ parseVMSTATfile <- function(inFileName,inCellName){
           if(("swpd" %in% names(dfInt2))){ # Linux
             dfInt2 <- rename(dfInt2, c("swpd"="swap"))
           }
+
+          if(("avm" %in% names(dfInt2))){ # Linux
+            dfInt2 <- rename(dfInt2, c("avm"="swap"))
+          }
+
 
 
           dfInt2 <- subset( dfInt2, select = c(swap,free,si,so,us,sy,id) )
@@ -319,15 +298,18 @@ for (f in oswM$oswfiles) {
   #flog.debug(paste0('File: ',f[[1]]))
   
   oswM$currentFileName <- f
-  oswM$cellName <- c(oswM$cellName,gsub(pattern = namePattern, replacement="\\1", f))
+  oswM$cellName <- gsub(pattern = namePattern, replacement="\\1", f)
+  #oswM$cellName <- c(oswM$cellName,gsub(pattern = namePattern, replacement="\\1", f))
   
   fileInfo <- file.info(f)
-  okToParseFile <- compareFile(f,fileInfo)
+  #okToParseFile <- compareFile(f,fileInfo)
   
   if(okToParseFile){
     parseVMSTATfile(f,oswM$cellName)
   }
   
+  print(paste0("Rows in DT: ",nrow(oswMdata$DT_VMSTAT)))
+  print(unique(oswMdata$DT_VMSTAT$name))
   
   updateFileMetadata(f,fileInfo,okToParseFile)
   
@@ -338,6 +320,9 @@ for (f in oswM$oswfiles) {
   flog.trace(f)
 }
 
+
+
+oswMdata$DT_VMSTAT$cpu.busy <- (100-oswMdata$DT_VMSTAT$cpu.idle)
 
 
 
@@ -356,12 +341,13 @@ for (f in oswM$oswfiles) {
 #   print(head(oswM$debug.unitTimesWide,30))
 # }
 
-save(oswM,file="oswM.Rda")
+#save(oswM,file="oswM.Rda")
 
 print(head(oswMdata$DT_VMSTAT,n=30))
 print(head(oswMdata$dataFiles))
-save(oswM,file="oswM-DT_VMSTAT.Rda")
+#save(oswM,file="oswM-DT_VMSTAT.Rda")
 save(oswMdata,file="oswVMSTATdata.Rda")
+print(unique(oswMdata$DT_VMSTAT$name))
 
 
 
